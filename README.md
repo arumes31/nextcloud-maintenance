@@ -42,12 +42,12 @@ docker run -d \
   --name nextcloud-maintenance \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -e NEXTCLOUD_CONTAINER="nextcloud-app-1" \
+  -e NEXTCLOUD_CONTAINER="nextcloud-cron-1" \
   -e INTERVAL_MINUTES="60" \
   nextcloud-maintenance-bot
 ```
 
-**Note:** Replace `nextcloud-app-1` with the actual name of your Nextcloud Docker container.
+**Note:** Replace `nextcloud-cron-1` with the actual name of your Nextcloud Docker container.
 
 ## Environment Variables
 
