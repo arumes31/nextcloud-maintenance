@@ -30,7 +30,7 @@ The script operates by:
 Navigate to the root of this repository and build the Docker image:
 
 ```bash
-docker build -t nextcloud-maintenance-bot .
+docker build -t nextcloud-maintenance .
 ```
 
 ### Run the Docker Container
