@@ -13,7 +13,8 @@ RUN apt-get update && \
 # App setup
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade "pip>=25.3" && \
+    pip install --no-cache-dir -r requirements.txt
 
 COPY maintenance.py .
 
