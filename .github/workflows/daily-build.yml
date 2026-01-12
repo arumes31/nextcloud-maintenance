@@ -32,13 +32,21 @@ jobs:
           set -e
           set -x
           OWNER="${{ github.repository_owner }}"
-          PACKAGE_NAME="${{ github.event.repository.name }}"
+          REPO="${{ github.repository }}"
+          PACKAGE_NAME=$(echo "$REPO" | cut -d'/' -f2)
           
           echo "Listing versions for package '$PACKAGE_NAME' owned by '$OWNER'"
+
+          # Determine if OWNER is a user or an organization
+          OWNER_TYPE=$(gh api "users/$OWNER" --jq '.type' 2>/dev/null || echo "Organization")
+          if [ "$OWNER_TYPE" == "User" ]; then
+            API_BASE="users/$OWNER"
+          else
+            API_BASE="orgs/$OWNER"
+          fi
           
           # Use an if statement to handle the expected failure when the package doesn't exist.
-          # This prevents `set -e` from exiting the script prematurely.
-          if ! VERSIONS=$(gh api "users/$OWNER/packages/container/$PACKAGE_NAME/versions" --jq '[.[] | {id: .id, created_at: .created_at, tags: .metadata.container.tags}]' 2>&1); then
+          if ! VERSIONS=$(gh api "$API_BASE/packages/container/$PACKAGE_NAME/versions" --jq '[.[] | {id: .id, created_at: .created_at, tags: .metadata.container.tags}]' 2>&1); then
             # This block executes if `gh api` returns a non-zero exit code.
             if echo "$VERSIONS" | grep -q "Package not found"; then
               echo "Package '$PACKAGE_NAME' not found. This is expected if it has not been published yet. Nothing to clean up."
@@ -71,7 +79,7 @@ jobs:
           
           echo "$OLD_VERSIONS_TO_DELETE" | jq -r '.[].id' | while read -r VERSION_ID; do
             echo "Deleting version with ID: $VERSION_ID"
-            gh api --method DELETE "users/$OWNER/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" --silent
+            gh api --method DELETE "$API_BASE/packages/container/$PACKAGE_NAME/versions/$VERSION_ID" --silent
           done
           
           echo "Cleanup complete."
