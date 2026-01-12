@@ -44,7 +44,24 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e NEXTCLOUD_CONTAINER="nextcloud-cron-1" \
   -e INTERVAL_MINUTES="60" \
-  nextcloud-maintenance-bot
+  ghcr.io/arumes31/nextcloud-maintenance:latest
+```
+
+### Docker Compose
+
+Alternatively, you can use Docker Compose to manage the service:
+
+```yaml
+services:
+  nextcloud-maintenance:
+    image: ghcr.io/arumes31/nextcloud-maintenance:latest
+    container_name: nextcloud-maintenance
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NEXTCLOUD_CONTAINER=nextcloud-cron-1
+      - INTERVAL_MINUTES=60
 ```
 
 **Note:** Replace `nextcloud-cron-1` with the actual name of your Nextcloud Docker container.
