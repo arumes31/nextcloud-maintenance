@@ -59,7 +59,7 @@ jobs:
           CUTOFF_DATE=$(date -d "60 days ago" -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "Cutoff date: $CUTOFF_DATE"
           
-          OLD_VERSIONS_TO_DELETE=$(echo "$VERSIONS" | jq --arg cutoff_date "$CUTOFF_DATE" '. | map(select(.created_at < $cutoff_date and (any(.tags[]; . == "production-smb") | not)))')
+          OLD_VERSIONS_TO_DELETE=$(echo "$VERSIONS" | jq --arg cutoff_date "$CUTOFF_DATE" '. | map(select(.created_at < $cutoff_date and (any(.tags[]?; . == "latest") | not)))')
 
           if [ -z "$OLD_VERSIONS_TO_DELETE" ] || [ "$(echo "$OLD_VERSIONS_TO_DELETE" | jq 'length')" -eq 0 ]; then
             echo "No old versions to delete."
