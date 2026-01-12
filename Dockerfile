@@ -2,7 +2,7 @@
 # Nextcloud Maintenance Container – Python SDK Only
 # Uses Debian's native docker-cli (no official Docker repo needed)
 # ─────────────────────────────────────────────────────────────
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Install Debian's native docker-cli (available in trixie repos)
 # No apt-transport-https or extra repos – keeps it tiny
