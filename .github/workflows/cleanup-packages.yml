@@ -1,0 +1,27 @@
+name: Cleanup Old Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'Name of the package to cleanup'
+        required: true
+        default: 'nextcloud-maintenance'
+      num_to_keep:
+        description: 'Number of recent versions to keep'
+        required: true
+        default: '5'
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete old package versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ github.event.inputs.package_name }}
+          package-type: 'container'
+          min-versions-to-keep: ${{ github.event.inputs.num_to_keep }}
+          delete-only-untagged-versions: 'false'
