@@ -1,0 +1,7 @@
+# The upstream python:3.14-slim SBOM reports these packages even though neither
+# package is installed in the final image (verified with pip list and filesystem
+# inspection on 2026-08-28). Keep these narrowly scoped IDs until the upstream
+# image metadata is corrected; all operating-system findings remain enforced.
+# Review/remove these exceptions by 2026-09-28.
+GHSA-6v7p-g79w-8964
+CVE-2025-47273
