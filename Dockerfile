@@ -6,8 +6,9 @@ FROM python:3.14-slim
 
 # Install Debian's native docker-cli (available in trixie repos)
 # No apt-transport-https or extra repos – keeps it tiny
+# Refresh the base image's PCRE2 library for CVE-2026-103111.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends docker-cli && \
+    apt-get install -y --no-install-recommends docker-cli libpcre2-8-0 && \
     rm -rf /var/lib/apt/lists/*
 
 # App setup
