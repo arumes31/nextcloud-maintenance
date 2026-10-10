@@ -36,7 +36,6 @@ jobs:
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          trivyignores: '.trivyignore'
           exit-code: '1'
         env:
           TRIVY_USERNAME: ${{ github.actor }}

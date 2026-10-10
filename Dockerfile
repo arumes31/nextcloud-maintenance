@@ -1,4 +1,4 @@
-FROM python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5
+FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -14,7 +14,8 @@ RUN groupadd --gid 10001 maintenance \
 WORKDIR /app
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir --upgrade "pip==26.2.1" \
-    && python -m pip install --no-cache-dir -r requirements.txt
+    && python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall --yes pip setuptools
 
 COPY --chown=10001:10001 maintenance.py healthcheck.py ./
 

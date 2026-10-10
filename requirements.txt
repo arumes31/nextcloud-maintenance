@@ -1,1 +1,3 @@
 docker==7.2.0
+# Keep Docker's HTTP transport on the patched proxy and streaming implementation.
+urllib3==2.8.0
