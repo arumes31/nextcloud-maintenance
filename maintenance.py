@@ -67,7 +67,9 @@ def maintenance_cycle(client, container_name, sleeper=time.sleep):
         if run_occ(client, ["maintenance:mode", "--off"], container_name) is None:
             return False
         log.info("waiting 10 minutes after disabling maintenance mode")
-        sleeper(600)
+        if sleeper(600):
+            log.info("shutdown interrupted the maintenance delay")
+            return False
 
     status = run_occ(client, ["status"], container_name)
     if status is None:
@@ -124,7 +126,7 @@ def main():
     try:
         while not stop_event.is_set():
             try:
-                if maintenance_cycle(client, container_name):
+                if maintenance_cycle(client, container_name, stop_event.wait):
                     write_heartbeat()
             except Exception:
                 log.exception("unexpected maintenance error")

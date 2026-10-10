@@ -67,6 +67,22 @@ class MaintenanceTests(unittest.TestCase):
             [["maintenance:mode"], ["status"], ["app:update", "--all"]],
         )
 
+    def test_shutdown_during_maintenance_delay_stops_commands(self):
+        container = Container([
+            Result("Maintenance mode is enabled"), Result(),
+            Result("Update needed"), Result(), Result("updated"),
+        ])
+        wait_for_shutdown = mock.Mock(return_value=True)
+
+        self.assertFalse(maintenance.maintenance_cycle(
+            Client(container), "nextcloud", wait_for_shutdown,
+        ))
+        wait_for_shutdown.assert_called_once_with(600)
+        self.assertEqual(
+            [entry[0][2:] for entry in container.commands],
+            [["maintenance:mode"], ["maintenance:mode", "--off"]],
+        )
+
     def test_occ_failure_stops_cycle(self):
         container = Container([Result("permission denied", exit_code=1)])
         self.assertFalse(maintenance.maintenance_cycle(Client(container), "nextcloud"))
