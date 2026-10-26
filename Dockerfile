@@ -4,7 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN groupadd --gid 10001 maintenance \
+# Keep Debian security upgrades fresh when CI restores the GHA build cache.
+ARG RUNTIME_APT_REFRESH=manual
+RUN printf 'Runtime package refresh: %s\n' "$RUNTIME_APT_REFRESH" \
+    && groupadd --gid 10001 maintenance \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin maintenance \
     && install -d -o 10001 -g 10001 -m 0700 /var/lib/nextcloud-maintenance \
     && apt-get update \
