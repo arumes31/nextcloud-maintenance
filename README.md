@@ -5,7 +5,7 @@ This repository contains a Python script designed to automate essential maintena
 ## Features
 
 -   **Stale Maintenance Mode Handling:** Disables maintenance mode only after it has been observed continuously for `MAINTENANCE_STALE_MINUTES` (default 60), so a deliberate maintenance window (backup, migration) is not interrupted. While maintenance mode is on, the cycle is skipped. Can be turned off entirely with `AUTO_DISABLE_MAINTENANCE=false`.
--   **Core Upgrade Detection & Execution:** Checks for available Nextcloud core upgrades and performs the `occ upgrade` command when an update is needed. An optional pre-upgrade hook (for example a backup) must succeed first. Can be turned off with `AUTO_UPGRADE=false`.
+-   **Core Upgrade Detection & Execution:** Reads the structured `needsDbUpgrade` field from `occ status --output=json` (stdout only) and runs `occ upgrade` when the installed code needs its database upgrade, e.g. after the Nextcloud image was updated. Free-text output is not used for this decision, and an unparseable status fails the cycle. An optional pre-upgrade hook (for example a backup) must succeed first. Can be turned off with `AUTO_UPGRADE=false`.
 -   **Application Updates:** Automatically updates all installed Nextcloud applications using `occ app:update --all`. Can be turned off with `AUTO_APP_UPDATE=false`.
 -   **Containerized Operation:** Provided with a `Dockerfile` for easy deployment as a standalone Docker container.
 -   **Configurable Interval:** Runs maintenance cycles at a user-defined interval.
@@ -131,7 +131,8 @@ You can configure the bot's behavior using the following environment variables:
 -   `MAINTENANCE_STALE_MINUTES`: **(Optional)** How long maintenance mode must be observed continuously before it is disabled. Defaults to `60`; `0` restores the previous behaviour of disabling it immediately. The window is measured from the first cycle that sees it enabled, so the effective delay is rounded up to the next cycle.
 -   `AUTO_UPGRADE`: **(Optional)** Run `occ upgrade` when a core upgrade is needed. Defaults to `true`.
 -   `AUTO_APP_UPDATE`: **(Optional)** Run `occ app:update --all` each cycle. Defaults to `true`.
--   `PRE_UPGRADE_COMMAND`: **(Optional)** Command run via `docker exec` before `occ upgrade`, for example a backup script. It is split shell-style into an argument vector (no shell). If it exits non-zero, the upgrade and the rest of the cycle are skipped.
+-   `PRE_UPGRADE_COMMAND`: **(Optional)** Command run via `docker exec` before `occ upgrade`, for example a backup script. It is split shell-style into an argument vector (no shell). If it exits non-zero, the upgrade and the rest of the cycle are skipped. Its output is only logged at debug level, since backup scripts may print secrets. Unless `PRE_UPGRADE_USER` is set it runs as the container's default user, which is **root** in the official Nextcloud image, so keep the script and its directory unwritable by `www-data`.
+-   `PRE_UPGRADE_USER`: **(Optional)** User (`name`, `uid` or `uid:gid`) that runs `PRE_UPGRADE_COMMAND`. Defaults to the container's default user.
 -   `PRE_UPGRADE_CONTAINER`: **(Optional)** Container in which `PRE_UPGRADE_COMMAND` runs. Defaults to `NEXTCLOUD_CONTAINER`. Requires `PRE_UPGRADE_COMMAND`.
 
 `INTERVAL_MINUTES` must be a positive integer and `MAINTENANCE_STALE_MINUTES` a

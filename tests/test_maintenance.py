@@ -9,9 +9,15 @@ import maintenance
 
 
 class Result:
-    def __init__(self, output="", exit_code=0):
-        self.output = output.encode()
+    def __init__(self, output="", exit_code=0, stderr=""):
+        # exec_run(demux=True) returns (stdout, stderr), with None for an empty stream.
+        self.output = (output.encode() or None, stderr.encode() or None)
         self.exit_code = exit_code
+
+
+UPGRADE = '{"installed":true,"maintenance":false,"needsDbUpgrade":true}'
+CURRENT = '{"installed":true,"maintenance":false,"needsDbUpgrade":false}'
+STATUS = ["status", "--output=json"]
 
 
 class Container:
@@ -36,7 +42,7 @@ class MaintenanceTests(unittest.TestCase):
         container = Container([
             Result("Maintenance mode is enabled"),
             Result(),
-            Result("Update needed"),
+            Result(UPGRADE),
             Result(),
             Result("updated"),
         ])
@@ -53,7 +59,7 @@ class MaintenanceTests(unittest.TestCase):
             [
                 ["maintenance:mode"],
                 ["maintenance:mode", "--off"],
-                ["status"],
+                STATUS,
                 ["upgrade"],
                 ["app:update", "--all"],
             ],
@@ -63,18 +69,18 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(kwargs["user"], "www-data")
 
     def test_no_upgrade_path(self):
-        container = Container([Result("disabled"), Result("installed: true"), Result("updated")])
+        container = Container([Result("disabled"), Result(CURRENT), Result("updated")])
 
         self.assertTrue(maintenance.maintenance_cycle(Client(container), "nextcloud"))
         self.assertEqual(
             [entry[0][2:] for entry in container.commands],
-            [["maintenance:mode"], ["status"], ["app:update", "--all"]],
+            [["maintenance:mode"], STATUS, ["app:update", "--all"]],
         )
 
     def test_shutdown_during_maintenance_delay_stops_commands(self):
         container = Container([
             Result("Maintenance mode is enabled"), Result(),
-            Result("Update needed"), Result(), Result("updated"),
+            Result(UPGRADE), Result(), Result("updated"),
         ])
         wait_for_shutdown = mock.Mock(return_value=True)
 
@@ -92,7 +98,7 @@ class MaintenanceTests(unittest.TestCase):
         container = Container([
             Result("Maintenance mode is enabled"),
             Result("Maintenance mode is enabled"),
-            Result(), Result("installed: true"), Result("updated"),
+            Result(), Result(CURRENT), Result("updated"),
         ])
         client = Client(container)
         state = {}
@@ -110,7 +116,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertTrue(cycle())
         self.assertEqual(
             [entry[0][2:] for entry in container.commands][1:],
-            [["maintenance:mode"], ["maintenance:mode", "--off"], ["status"], ["app:update", "--all"]],
+            [["maintenance:mode"], ["maintenance:mode", "--off"], STATUS, ["app:update", "--all"]],
         )
         self.assertEqual(sleeps, [600])
         self.assertNotIn("maintenance_since", state)
@@ -118,7 +124,7 @@ class MaintenanceTests(unittest.TestCase):
     def test_stale_window_resets_when_maintenance_mode_clears(self):
         container = Container([
             Result("Maintenance mode is enabled"),
-            Result("disabled"), Result("installed: true"), Result("updated"),
+            Result("disabled"), Result(CURRENT), Result("updated"),
             Result("Maintenance mode is enabled"),
         ])
         client = Client(container)
@@ -146,18 +152,18 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual([entry[0][2:] for entry in container.commands], [["maintenance:mode"]])
 
     def test_auto_upgrade_and_app_update_off(self):
-        container = Container([Result("disabled"), Result("Update needed")])
+        container = Container([Result("disabled"), Result(UPGRADE)])
         settings = maintenance.Settings(auto_upgrade=False, auto_app_update=False)
 
         self.assertTrue(maintenance.maintenance_cycle(Client(container), "nextcloud", settings=settings))
         self.assertEqual(
             [entry[0][2:] for entry in container.commands],
-            [["maintenance:mode"], ["status"]],
+            [["maintenance:mode"], STATUS],
         )
 
     def test_pre_upgrade_hook_runs_before_upgrade(self):
         container = Container([
-            Result("disabled"), Result("Update needed"), Result("backup ok"), Result(), Result("updated"),
+            Result("disabled"), Result(UPGRADE), Result("backup ok"), Result(), Result("updated"),
         ])
         settings = maintenance.Settings(
             pre_upgrade_container="nextcloud", pre_upgrade_command=("/backup.sh", "--now"),
@@ -168,7 +174,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(container.commands[3][0][2:], ["upgrade"])
 
     def test_failed_pre_upgrade_hook_blocks_upgrade(self):
-        container = Container([Result("disabled"), Result("Update needed"), Result("disk full", exit_code=1)])
+        container = Container([Result("disabled"), Result(UPGRADE), Result("disk full", exit_code=1)])
         settings = maintenance.Settings(
             pre_upgrade_container="nextcloud", pre_upgrade_command=("/backup.sh",),
         )
@@ -200,6 +206,43 @@ class MaintenanceTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"PRE_UPGRADE_CONTAINER": "backup"}, clear=True):
             with self.assertRaises(ValueError):
                 maintenance.load_settings("nextcloud")
+
+    def test_stderr_text_cannot_trigger_upgrade(self):
+        container = Container([
+            Result("disabled"),
+            Result(CURRENT, stderr="update needed / update available"),
+            Result("updated"),
+        ])
+        settings = maintenance.Settings(pre_upgrade_container="nextcloud", pre_upgrade_command=("/backup.sh",))
+
+        self.assertTrue(maintenance.maintenance_cycle(Client(container), "nextcloud", settings=settings))
+        self.assertEqual(
+            [entry[0][2:] for entry in container.commands],
+            [["maintenance:mode"], STATUS, ["app:update", "--all"]],
+        )
+
+    def test_free_text_status_is_not_trusted(self):
+        for output in ["Update needed", "update available", '{"needsDbUpgrade":"yes"}', ""]:
+            with self.subTest(output=output):
+                container = Container([Result("disabled"), Result(output)])
+                self.assertFalse(maintenance.maintenance_cycle(Client(container), "nextcloud"))
+                self.assertEqual(len(container.commands), 2)
+
+    def test_status_json_after_warning_lines(self):
+        self.assertTrue(maintenance.needs_db_upgrade("PHP Warning: something\n" + UPGRADE))
+        self.assertFalse(maintenance.needs_db_upgrade(CURRENT + "\n"))
+
+    def test_pre_upgrade_hook_user_and_output_not_logged_at_info(self):
+        container = Container([Result("secret-token", exit_code=1, stderr="secret-error")])
+        settings = maintenance.Settings(
+            pre_upgrade_container="nextcloud", pre_upgrade_command=("/backup.sh",), pre_upgrade_user="backup",
+        )
+        with self.assertLogs(maintenance.log, level="INFO") as logs:
+            self.assertFalse(maintenance.run_pre_upgrade_hook(Client(container), settings))
+        self.assertNotIn("secret", " ".join(logs.output))
+        self.assertEqual(container.commands[0][1]["user"], "backup")
+        with mock.patch.dict(os.environ, {"PRE_UPGRADE_COMMAND": "/b", "PRE_UPGRADE_USER": " www-data "}, clear=True):
+            self.assertEqual(maintenance.load_settings("nextcloud").pre_upgrade_user, "www-data")
 
     def test_occ_failure_stops_cycle(self):
         container = Container([Result("permission denied", exit_code=1)])

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from dataclasses import dataclass
+import json
 import logging
 import os
 from pathlib import Path
@@ -64,6 +65,7 @@ class Settings:
     auto_app_update: bool = True
     pre_upgrade_container: str = ""
     pre_upgrade_command: tuple = ()
+    pre_upgrade_user: str = ""
 
 
 def load_settings(container_name):
@@ -78,18 +80,34 @@ def load_settings(container_name):
         auto_app_update=bool_env("AUTO_APP_UPDATE", True),
         pre_upgrade_container=pre_upgrade_container or container_name,
         pre_upgrade_command=pre_upgrade_command,
+        pre_upgrade_user=os.getenv("PRE_UPGRADE_USER", "").strip(),
     )
+
+
+def decode_output(output):
+    """Return (stdout, stderr) text from a demultiplexed exec result."""
+    stdout, stderr = output if isinstance(output, tuple) else (output, None)
+    return tuple((part or b"").decode("utf-8", errors="replace").strip() for part in (stdout, stderr))
 
 
 def run_pre_upgrade_hook(client, settings):
     try:
         container = client.containers.get(settings.pre_upgrade_container)
-        result = container.exec_run(list(settings.pre_upgrade_command), stdout=True, stderr=True)
-        output = result.output.decode("utf-8", errors="replace").strip()
+        # Without PRE_UPGRADE_USER the hook runs as the container's default user (root in the
+        # official Nextcloud image).
+        result = container.exec_run(
+            list(settings.pre_upgrade_command),
+            user=settings.pre_upgrade_user,
+            stdout=True,
+            stderr=True,
+            demux=True,
+        )
         if result.exit_code != 0:
             log.error("pre-upgrade hook failed with exit code %s", result.exit_code)
-            if output:
-                log.error("%s", output)
+            # The hook may print configuration or credentials, so keep its output out of the default log.
+            for output in decode_output(result.output):
+                if output:
+                    log.debug("%s", output)
             return False
         return True
     except Exception as error:  # Docker SDK exception subclasses vary by transport.
@@ -105,17 +123,34 @@ def run_occ(client, command, container_name):
             user="www-data",
             stdout=True,
             stderr=True,
+            demux=True,
         )
-        output = result.output.decode("utf-8", errors="replace").strip()
+        # Decisions are taken from stdout only; stderr (warnings, app noise) is just logged.
+        output, errors = decode_output(result.output)
         if result.exit_code != 0:
             log.error("occ command failed with exit code %s: %s", result.exit_code, " ".join(command))
-            if output:
-                log.error("%s", output)
+            for text in (output, errors):
+                if text:
+                    log.error("%s", text)
             return None
+        if errors:
+            log.warning("%s", errors)
         return output
     except Exception as error:  # Docker SDK exception subclasses vary by transport.
         log.error("cannot reach Nextcloud container (%s)", type(error).__name__)
         return None
+
+
+def needs_db_upgrade(status_output):
+    """Read needsDbUpgrade from `occ status --output=json`; None if it cannot be parsed."""
+    lines = [line for line in status_output.splitlines() if line.strip()]
+    try:
+        status = json.loads(lines[-1]) if lines else None
+    except ValueError:
+        return None
+    if not isinstance(status, dict) or not isinstance(status.get("needsDbUpgrade"), bool):
+        return None
+    return status["needsDbUpgrade"]
 
 
 def maintenance_cycle(client, container_name, sleeper=time.sleep, settings=None, state=None,
@@ -155,10 +190,14 @@ def maintenance_cycle(client, container_name, sleeper=time.sleep, settings=None,
             log.info("shutdown interrupted the maintenance delay")
             return False
 
-    status = run_occ(client, ["status"], container_name)
+    status = run_occ(client, ["status", "--output=json"], container_name)
     if status is None:
         return False
-    if "update needed" in status.lower() or "update available" in status.lower():
+    needs_upgrade = needs_db_upgrade(status)
+    if needs_upgrade is None:
+        log.error("cannot parse the output of occ status")
+        return False
+    if needs_upgrade:
         if not settings.auto_upgrade:
             log.warning("core upgrade available; AUTO_UPGRADE is off, skipping upgrade")
         else:
