@@ -104,10 +104,9 @@ def run_pre_upgrade_hook(client, settings):
         )
         if result.exit_code != 0:
             log.error("pre-upgrade hook failed with exit code %s", result.exit_code)
-            # The hook may print configuration or credentials, so keep its output out of the default log.
-            for output in decode_output(result.output):
-                if output:
-                    log.debug("%s", output)
+            # The hook may print configuration or credentials, so its output is never logged.
+            stdout, stderr = decode_output(result.output)
+            log.error("pre-upgrade hook output withheld (%d bytes stdout, %d bytes stderr)", len(stdout), len(stderr))
             return False
         return True
     except Exception as error:  # Docker SDK exception subclasses vary by transport.

@@ -232,12 +232,12 @@ class MaintenanceTests(unittest.TestCase):
         self.assertTrue(maintenance.needs_db_upgrade("PHP Warning: something\n" + UPGRADE))
         self.assertFalse(maintenance.needs_db_upgrade(CURRENT + "\n"))
 
-    def test_pre_upgrade_hook_user_and_output_not_logged_at_info(self):
+    def test_pre_upgrade_hook_user_and_output_never_logged(self):
         container = Container([Result("secret-token", exit_code=1, stderr="secret-error")])
         settings = maintenance.Settings(
             pre_upgrade_container="nextcloud", pre_upgrade_command=("/backup.sh",), pre_upgrade_user="backup",
         )
-        with self.assertLogs(maintenance.log, level="INFO") as logs:
+        with self.assertLogs(maintenance.log, level="DEBUG") as logs:
             self.assertFalse(maintenance.run_pre_upgrade_hook(Client(container), settings))
         self.assertNotIn("secret", " ".join(logs.output))
         self.assertEqual(container.commands[0][1]["user"], "backup")
